@@ -6,7 +6,6 @@
 #import <React/RCTLog.h>
 #import <React/UIView+React.h>
 #import "NSMutableDictionary+ImageMetadata.m"
-#import <AssetsLibrary/ALAssetsLibrary.h>
 #import <AVFoundation/AVFoundation.h>
 #import <ImageIO/ImageIO.h>
 #import "RCTSensorOrientationChecker.h"
@@ -769,15 +768,17 @@ RCT_EXPORT_METHOD(setZoom:(CGFloat)zoomFactor) {
   }
 
   else if (target == RCTCameraCaptureTargetCameraRoll) {
-    [[[ALAssetsLibrary alloc] init] writeImageDataToSavedPhotosAlbum:imageData metadata:metadata completionBlock:^(NSURL* url, NSError* error) {
-      if (error == nil) {
-        //path isn't really applicable here (this is an asset uri), but left it in for backward comparability
-        resolve(@{@"path":[url absoluteString], @"mediaUri":[url absoluteString]});
-      }
-      else {
-        reject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
-      }
-    }];
+      [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
+          [PHAssetCreationRequest creationRequestForAssetFromImage:[UIImage imageWithData:imageData]];
+      } completionHandler:^(BOOL success, NSError * _Nullable error) {
+          if (error == nil && success) {
+            //path isn't really applicable here (this is an asset uri), but left it in for backward comparability
+            resolve(@{@"path":@"", @"mediaUri":@""});
+          }
+          else {
+            reject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
+          }
+      }];
     return;
   }
   resolve(@{@"path":responseString, @"width":[NSNumber numberWithFloat:imageSize.width], @"height":[NSNumber numberWithFloat:imageSize.height]});
@@ -919,25 +920,23 @@ didFinishRecordingToOutputFileAtURL:(NSURL *)outputFileURL
   }];
 
   if (self.videoTarget == RCTCameraCaptureTargetCameraRoll) {
-    ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
-    if ([library videoAtPathIsCompatibleWithSavedPhotosAlbum:outputFileURL]) {
-      [library writeVideoAtPathToSavedPhotosAlbum:outputFileURL
-                                  completionBlock:^(NSURL *assetURL, NSError *error) {
-                                    if (error) {
-                                      self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
-                                      return;
-                                    } else if (assetURL == nil) {
-                                      //It's possible for writing to camera roll to fail,
-                                      //without receiving an error message, but assetURL will be nil
-                                      //Happens when disk is (almost) full
-                                      self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"Not enough storage"));
-                                      return;
-                                    }
+    [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
+        [PHAssetCreationRequest creationRequestForAssetFromVideoAtFileURL:outputFileURL];
+      } completionHandler:^(BOOL success, NSError * _Nullable error) {
+          if (error) {
+            self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
+            return;
+          } else if (!success) {
+            //It's possible for writing to camera roll to fail,
+            //without receiving an error message, but assetURL will be nil
+            //Happens when disk is (almost) full
+            self.videoReject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"Not enough storage"));
+            return;
+          }
 
-                                    [videoInfo setObject:[assetURL absoluteString] forKey:@"path"];
-                                    self.videoResolve(videoInfo);
-                                  }];
-    }
+          [videoInfo setObject:[outputFileURL absoluteString] forKey:@"path"];
+          self.videoResolve(videoInfo);
+      }];
   }
   else if (self.videoTarget == RCTCameraCaptureTargetDisk) {
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);

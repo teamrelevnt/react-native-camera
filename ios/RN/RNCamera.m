@@ -1210,7 +1210,9 @@ BOOL _sessionInterrupted = NO;
         if ([self.session canAddOutput:stillImageOutput]) {
             stillImageOutput.outputSettings = @{AVVideoCodecKey : AVVideoCodecJPEG};
             [self.session addOutput:stillImageOutput];
-            [stillImageOutput setHighResolutionStillImageOutputEnabled:YES];
+            #if !TARGET_OS_MACCATALYST
+                [stillImageOutput setHighResolutionStillImageOutputEnabled:YES];
+            #endif
             self.stillImageOutput = stillImageOutput;
         }
 
