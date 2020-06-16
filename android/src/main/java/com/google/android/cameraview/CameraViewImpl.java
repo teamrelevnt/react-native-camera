@@ -23,6 +23,7 @@ import android.os.Handler;
 
 import com.facebook.react.bridge.ReadableMap;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -61,7 +62,7 @@ abstract class CameraViewImpl {
     abstract boolean isCameraOpened();
 
     abstract void setFacing(int facing);
-
+  
     abstract int getFacing();
 
     abstract void setCameraId(String id);
@@ -100,7 +101,7 @@ abstract class CameraViewImpl {
     abstract void takePicture(ReadableMap options);
 
     abstract boolean record(String path, int maxDuration, int maxFileSize,
-                            boolean recordAudio, CamcorderProfile profile, int orientation);
+                            boolean recordAudio, CamcorderProfile profile, int orientation, int fps);
 
     abstract void stopRecording();
 
@@ -120,9 +121,15 @@ abstract class CameraViewImpl {
 
     abstract float getZoom();
 
+    abstract public ArrayList<int[]> getSupportedPreviewFpsRange();
+
     abstract void setWhiteBalance(int whiteBalance);
 
     abstract int getWhiteBalance();
+
+    abstract void setPlaySoundOnCapture(boolean playSoundOnCapture);
+
+    abstract boolean getPlaySoundOnCapture();
 
     abstract void setScanning(boolean isScanning);
 
@@ -145,6 +152,10 @@ abstract class CameraViewImpl {
         void onPictureTaken(byte[] data, int deviceOrientation);
 
         void onVideoRecorded(String path, int videoOrientation, int deviceOrientation);
+
+        void onRecordingStart(String path, int videoOrientation, int deviceOrientation);
+
+        void onRecordingEnd();
 
         void onFramePreview(byte[] data, int width, int height, int orientation);
 

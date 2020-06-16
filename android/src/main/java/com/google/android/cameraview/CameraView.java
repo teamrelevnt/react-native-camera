@@ -126,7 +126,7 @@ public class CameraView extends FrameLayout {
         // Internal setup
         final PreviewImpl preview = createPreviewImpl(context);
         mCallbacks = new CallbackBridge();
-        if (fallbackToOldApi || Build.VERSION.SDK_INT < 21) {
+        if (fallbackToOldApi || Build.VERSION.SDK_INT < 21 || Camera2.isLegacy(context)) {
             mImpl = new Camera1(mCallbacks, preview, mBgHandler);
         } else if (Build.VERSION.SDK_INT < 23) {
             mImpl = new Camera2(mCallbacks, preview, context, mBgHandler);
@@ -256,6 +256,7 @@ public class CameraView extends FrameLayout {
         state.focusDepth = getFocusDepth();
         state.zoom = getZoom();
         state.whiteBalance = getWhiteBalance();
+        state.playSoundOnCapture = getPlaySoundOnCapture();
         state.scanning = getScanning();
         state.pictureSize = getPictureSize();
         return state;
@@ -278,6 +279,7 @@ public class CameraView extends FrameLayout {
         setFocusDepth(ss.focusDepth);
         setZoom(ss.zoom);
         setWhiteBalance(ss.whiteBalance);
+        setPlaySoundOnCapture(ss.playSoundOnCapture);
         setScanning(ss.scanning);
         setPictureSize(ss.pictureSize);
     }
@@ -290,7 +292,7 @@ public class CameraView extends FrameLayout {
         boolean wasOpened = isCameraOpened();
         Parcelable state = onSaveInstanceState();
 
-        if (useCamera2) {
+        if (useCamera2 && !Camera2.isLegacy(mContext)) {
             if (wasOpened) {
                 stop();
             }
@@ -311,7 +313,9 @@ public class CameraView extends FrameLayout {
             }
             mImpl = new Camera1(mCallbacks, mImpl.mPreview, mBgHandler);
         }
-        start();
+        if(wasOpened){
+            start();
+        }
     }
 
     /**
@@ -319,17 +323,20 @@ public class CameraView extends FrameLayout {
      * {@link Activity#onResume()}.
      */
     public void start() {
-        if (!mImpl.start()) {
-            if (mImpl.getView() != null) {
-                this.removeView(mImpl.getView());
-            }
-            //store the state and restore this state after fall back to Camera1
-            Parcelable state = onSaveInstanceState();
-            // Camera2 uses legacy hardware layer; fall back to Camera1
-            mImpl = new Camera1(mCallbacks, createPreviewImpl(getContext()), mBgHandler);
-            onRestoreInstanceState(state);
-            mImpl.start();
-        }
+        mImpl.start();
+
+        // this fallback is no longer needed and was too buggy/slow
+        // if (!mImpl.start()) {
+        //     if (mImpl.getView() != null) {
+        //         this.removeView(mImpl.getView());
+        //     }
+        //     //store the state and restore this state after fall back to Camera1
+        //     Parcelable state = onSaveInstanceState();
+        //     // Camera2 uses legacy hardware layer; fall back to Camera1
+        //     mImpl = new Camera1(mCallbacks, createPreviewImpl(getContext()), mBgHandler);
+        //     onRestoreInstanceState(state);
+        //     mImpl.start();
+        // }
     }
 
     /**
@@ -524,6 +531,10 @@ public class CameraView extends FrameLayout {
         mImpl.setFlash(flash);
     }
 
+    public ArrayList<int[]> getSupportedPreviewFpsRange() {
+      return mImpl.getSupportedPreviewFpsRange();
+    }
+
     /**
      * Gets the current flash mode.
      *
@@ -585,6 +596,14 @@ public class CameraView extends FrameLayout {
       return mImpl.getWhiteBalance();
     }
 
+    public void setPlaySoundOnCapture(boolean playSoundOnCapture) {
+      mImpl.setPlaySoundOnCapture(playSoundOnCapture);
+    }
+
+    public boolean getPlaySoundOnCapture() {
+      return mImpl.getPlaySoundOnCapture();
+    }
+
     public void setScanning(boolean isScanning) { mImpl.setScanning(isScanning);}
 
     public boolean getScanning() { return mImpl.getScanning(); }
@@ -604,10 +623,12 @@ public class CameraView extends FrameLayout {
      * @param maxDuration Maximum duration of the recording, in seconds.
      * @param maxFileSize Maximum recording file size, in bytes.
      * @param profile Quality profile of the recording.
+     *
+     * fires {@link Callback#onRecordingStart(CameraView, String, int, int)} and {@link Callback#onRecordingEnd(CameraView)}.
      */
     public boolean record(String path, int maxDuration, int maxFileSize,
-                          boolean recordAudio, CamcorderProfile profile, int orientation) {
-        return mImpl.record(path, maxDuration, maxFileSize, recordAudio, profile, orientation);
+                          boolean recordAudio, CamcorderProfile profile, int orientation, int fps) {
+        return mImpl.record(path, maxDuration, maxFileSize, recordAudio, profile, orientation, fps);
     }
 
     public void stopRecording() {
@@ -673,6 +694,20 @@ public class CameraView extends FrameLayout {
         }
 
         @Override
+        public void onRecordingStart(String path, int videoOrientation, int deviceOrientation) {
+            for (Callback callback : mCallbacks) {
+                callback.onRecordingStart(CameraView.this, path, videoOrientation, deviceOrientation);
+            }
+        }
+
+        @Override
+        public void onRecordingEnd() {
+            for (Callback callback : mCallbacks) {
+                callback.onRecordingEnd(CameraView.this);
+            }
+        }
+
+        @Override
         public void onVideoRecorded(String path, int videoOrientation, int deviceOrientation) {
             for (Callback callback : mCallbacks) {
                 callback.onVideoRecorded(CameraView.this, path, videoOrientation, deviceOrientation);
@@ -720,6 +755,8 @@ public class CameraView extends FrameLayout {
 
         int whiteBalance;
 
+        boolean playSoundOnCapture;
+
         boolean scanning;
 
         Size pictureSize;
@@ -736,6 +773,7 @@ public class CameraView extends FrameLayout {
             focusDepth = source.readFloat();
             zoom = source.readFloat();
             whiteBalance = source.readInt();
+            playSoundOnCapture = source.readByte() != 0;
             scanning = source.readByte() != 0;
             pictureSize = source.readParcelable(loader);
         }
@@ -756,6 +794,7 @@ public class CameraView extends FrameLayout {
             out.writeFloat(focusDepth);
             out.writeFloat(zoom);
             out.writeInt(whiteBalance);
+            out.writeByte((byte) (playSoundOnCapture ? 1 : 0));
             out.writeByte((byte) (scanning ? 1 : 0));
             out.writeParcelable(pictureSize, flags);
         }
@@ -788,16 +827,14 @@ public class CameraView extends FrameLayout {
          *
          * @param cameraView The associated {@link CameraView}.
          */
-        public void onCameraOpened(CameraView cameraView) {
-        }
+        public void onCameraOpened(CameraView cameraView) {}
 
         /**
          * Called when camera is closed.
          *
          * @param cameraView The associated {@link CameraView}.
          */
-        public void onCameraClosed(CameraView cameraView) {
-        }
+        public void onCameraClosed(CameraView cameraView) {}
 
         /**
          * Called when a picture is taken.
@@ -805,8 +842,23 @@ public class CameraView extends FrameLayout {
          * @param cameraView The associated {@link CameraView}.
          * @param data       JPEG data.
          */
-        public void onPictureTaken(CameraView cameraView, byte[] data, int deviceOrientation) {
-        }
+        public void onPictureTaken(CameraView cameraView, byte[] data, int deviceOrientation) {}
+
+        /**
+         * Called when a video recording starts
+         *
+         * @param cameraView The associated {@link CameraView}.
+         * @param path       Path to recoredd video file.
+         */
+        public void onRecordingStart(CameraView cameraView, String path, int videoOrientation, int deviceOrientation) {}
+
+        /**
+         * Called when a video recording ends, but before video is saved/processed.
+         *
+         * @param cameraView The associated {@link CameraView}.
+         * @param path       Path to recoredd video file.
+         */
+        public void onRecordingEnd(CameraView cameraView){}
 
         /**
          * Called when a video is recorded.
@@ -814,11 +866,9 @@ public class CameraView extends FrameLayout {
          * @param cameraView The associated {@link CameraView}.
          * @param path       Path to recoredd video file.
          */
-        public void onVideoRecorded(CameraView cameraView, String path, int videoOrientation, int deviceOrientation) {
-        }
+        public void onVideoRecorded(CameraView cameraView, String path, int videoOrientation, int deviceOrientation) {}
 
-        public void onFramePreview(CameraView cameraView, byte[] data, int width, int height, int orientation) {
-        }
+        public void onFramePreview(CameraView cameraView, byte[] data, int width, int height, int orientation) {}
 
         public void onMountError(CameraView cameraView) {}
     }

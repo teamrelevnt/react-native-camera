@@ -219,6 +219,44 @@ public class RNCameraViewHelper {
      });
   }
 
+  // video recording start/end events
+
+  public static void emitRecordingStartEvent(final ViewGroup view, final WritableMap response) {
+
+    final ReactContext reactContext = (ReactContext) view.getContext();
+    reactContext.runOnNativeModulesQueueThread(new Runnable() {
+      @Override
+      public void run() {
+        RecordingStartEvent event = RecordingStartEvent.obtain(view.getId(), response);
+        reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
+      }
+     });
+  }
+
+  public static void emitRecordingEndEvent(final ViewGroup view) {
+
+    final ReactContext reactContext = (ReactContext) view.getContext();
+    reactContext.runOnNativeModulesQueueThread(new Runnable() {
+      @Override
+      public void run() {
+        RecordingEndEvent event = RecordingEndEvent.obtain(view.getId());
+        reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
+      }
+     });
+  }
+  // Touch event
+  public static void emitTouchEvent(final ViewGroup view, final boolean isDoubleTap, final int x, final int y) {
+
+    final ReactContext reactContext = (ReactContext) view.getContext();
+    reactContext.runOnNativeModulesQueueThread(new Runnable() {
+      @Override
+      public void run() {
+        TouchEvent event = TouchEvent.obtain(view.getId(), isDoubleTap, x, y);
+        reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
+      }
+    });
+
+  }
   // Face detection events
 
   public static void emitFacesDetectedEvent(final ViewGroup view, final WritableArray data) {
